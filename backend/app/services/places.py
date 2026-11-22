@@ -32,7 +32,9 @@ LIST_FIELDS = ",".join(
         "id", "displayName", "formattedAddress", "shortFormattedAddress", "location",
         "primaryType", "primaryTypeDisplayName", "googleMapsUri", "businessStatus",
     )
-) + ",nextPageToken"
+)
+# Text Search pages; Nearby Search does not (asking for nextPageToken there is a 400).
+TEXT_SEARCH_FIELDS = LIST_FIELDS + ",nextPageToken"
 BASIC_FIELDS = "id,displayName,formattedAddress,shortFormattedAddress,location,primaryType,primaryTypeDisplayName,googleMapsUri,businessStatus"
 DETAIL_FIELDS = BASIC_FIELDS + (
     ",nationalPhoneNumber,internationalPhoneNumber,websiteUri,regularOpeningHours,currentOpeningHours,rating,userRatingCount"
@@ -77,7 +79,7 @@ class PlacesClient:
 
     def search_text(self, query: str, *, lat: float | None = None, lng: float | None = None,
                     radius_m: float | None = None, max_results: int = 20, page_token: str | None = None,
-                    language: str = "en", restrict_to_city: bool = False, fields: str = LIST_FIELDS) -> dict:
+                    language: str = "en", restrict_to_city: bool = False, fields: str = TEXT_SEARCH_FIELDS) -> dict:
         body: dict = {"textQuery": query[:200], "pageSize": max(1, min(max_results, 20)),
                       "languageCode": language, "regionCode": "IN"}
         if page_token:

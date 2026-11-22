@@ -153,6 +153,7 @@ def shop_public_view(shop: Shop, distance_m: float | None = None) -> dict:
         "provenance": "milega",
         "reservable": shop.status == "active",
         "google_place_id": shop.google_place_id if shop.place_link_status == "verified" else None,
+        "verified_at": shop.verified_at.isoformat() if shop.verified_at else None,
         "open_now": open_now(shop),
         "hours": [
             {"weekday": h.weekday, "opens": h.opens, "closes": h.closes, "is_closed": h.is_closed}

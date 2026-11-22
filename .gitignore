@@ -29,3 +29,9 @@ Thumbs.db
 *.db
 *.apk
 .pytest_cache/
+
+# JVM crash dumps
+hs_err_pid*.log
+replay_pid*.log
+# Robolectric / Roborazzi intermediate output
+android/app/build/
