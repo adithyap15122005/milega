@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+sqlalchemy>=2.0.36
+alembic>=1.14
+pydantic>=2.9
+pyjwt>=2.9
+python-multipart>=0.0.12
+pillow>=11
+anthropic>=2.12
+psycopg[binary]>=3.2 ; platform_system != "Emscripten"
+# optional: boto3 (STORAGE_BACKEND=s3)

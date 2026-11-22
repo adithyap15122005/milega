@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Milega Admin</title>
+<style>
+  :root {
+    --bg: #f6f7f4; --surface: #ffffff; --ink: #18211d; --muted: #5d6b64; --line: #e3e7e2;
+    --brand: #0b6e4f; --brand-ink: #ffffff; --accent: #f4a300; --danger: #b3261e; --warn: #8a5a00;
+    --chip: #eef3ef; --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111513; --surface: #1a201d; --ink: #e8ede9; --muted: #9aa8a0; --line: #2b332f;
+            --brand: #3fb58b; --brand-ink: #06140e; --chip: #232b27; --danger: #ff8a80; --warn: #ffcc66; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; background: var(--surface); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: -0.01em; }
+  header h1 span { color: var(--brand); }
+  nav { display: flex; gap: 4px; flex-wrap: wrap; }
+  nav button { border: 0; background: transparent; color: var(--muted); padding: 8px 12px; border-radius: 8px; font: inherit; cursor: pointer; }
+  nav button.active { background: var(--chip); color: var(--ink); font-weight: 600; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 64px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .stat .label { color: var(--muted); font-size: 13px; }
+  .stat .value { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .sub { color: var(--muted); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: var(--chip); }
+  .pill.pending, .pill.provisional, .pill.open { background: #fff1d6; color: #7a4f00; }
+  .pill.active, .pill.verified, .pill.confirmed, .pill.collected { background: #dcf3e8; color: #0b5a40; }
+  .pill.suspended, .pill.rejected, .pill.expired, .pill.cancelled, .pill.merged { background: #fde2df; color: #8c1d18; }
+  .pill.demo { background: #e5e1ff; color: #3b2c99; }
+  button.btn { border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 6px 12px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 14px; }
+  button.btn.primary { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+  button.btn.danger { color: var(--danger); }
+  button.btn:disabled { opacity: .5; cursor: default; }
+  input, select { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+  .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .muted { color: var(--muted); }
+  .login { max-width: 380px; margin: 10vh auto; }
+  .login h2 { margin-top: 0; }
+  .login label { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--muted); }
+  .login input { width: 100%; }
+  .notice { padding: 10px 12px; border-radius: 8px; background: #fff7e0; color: #6b4a00; font-size: 14px; margin-top: 12px; }
+  .error { color: var(--danger); margin-top: 8px; min-height: 20px; }
+  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  h2.section { font-size: 16px; margin: 28px 0 10px; }
+  code { font-size: 12px; }
+  .empty { padding: 32px; text-align: center; color: var(--muted); }
+  @media (max-width: 640px) { header { flex-wrap: wrap; padding: 12px 16px; } main { padding: 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1><span>Milega</span> Admin</h1>
+  <nav id="nav" hidden>
+    <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="shops">Shops</button>
+    <button data-tab="catalog">Catalogue</button>
+    <button data-tab="queue">Review queue</button>
+    <button data-tab="reservations">Reservations</button>
+    <button data-tab="audit">Audit log</button>
+  </nav>
+  <div style="flex:1"></div>
+  <button class="btn" id="logout" hidden>Log out</button>
+</header>
+<main id="app"></main>
+
+<script>
+const API = "/api/v1";
+let token = sessionStorage.getItem("milega_admin_token");
+const app = document.getElementById("app");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const rupees = (p) => p == null ? "—" : "₹" + (p / 100).toLocaleString("en-IN", {maximumFractionDigits: 2});
+const when = (iso) => iso ? new Date(iso).toLocaleString("en-IN", {dateStyle: "medium", timeStyle: "short"}) : "—";
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: {"Content-Type": "application/json", ...(token ? {Authorization: "Bearer " + token} : {}), ...(opts.headers || {})},
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.status === 401) { logout(); throw new Error("Please log in again"); }
+  if (!res.ok) throw new Error(body?.error?.message || ("Request failed: " + res.status));
+  return body;
+}
+
+function logout() {
+  token = null; sessionStorage.removeItem("milega_admin_token");
+  document.getElementById("nav").hidden = true;
+  document.getElementById("logout").hidden = true;
+  renderLogin();
+}
+document.getElementById("logout").onclick = logout;
+
+function renderLogin() {
+  app.innerHTML = `
+    <div class="card login">
+      <h2>Sign in</h2>
+      <p class="muted">Admin access uses your registered mobile number.</p>
+      <label for="phone">Mobile number</label>
+      <input id="phone" inputmode="numeric" autocomplete="tel" placeholder="90000 00001">
+      <div id="otp-step" hidden>
+        <label for="otp">One-time code</label>
+        <input id="otp" inputmode="numeric" autocomplete="one-time-code" maxlength="6">
+      </div>
+      <div class="error" id="login-error"></div>
+      <button class="btn primary" id="login-btn" style="width:100%;margin-top:8px">Send code</button>
+      <div id="dev" class="notice" hidden></div>
+    </div>`;
+  let sent = false;
+  const btn = document.getElementById("login-btn");
+  btn.onclick = async () => {
+    const phone = document.getElementById("phone").value;
+    const err = document.getElementById("login-error");
+    err.textContent = ""; btn.disabled = true;
+    try {
+      if (!sent) {
+        const r = await api("/auth/otp/request", {method: "POST", body: JSON.stringify({phone})});
+        sent = true;
+        document.getElementById("otp-step").hidden = false;
+        btn.textContent = "Verify";
+        if (r.dev_otp) {
+          const dev = document.getElementById("dev");
+          dev.hidden = false;
+          dev.textContent = "Development mode: your code is " + r.dev_otp + " (shown only because SMS is not configured).";
+        }
+      } else {
+        const code = document.getElementById("otp").value;
+        const r = await api("/auth/otp/verify", {method: "POST", body: JSON.stringify({phone, code})});
+        if (r.user.role !== "admin") throw new Error("This account is not an admin.");
+        token = r.access_token; sessionStorage.setItem("milega_admin_token", token);
+        start();
+      }
+    } catch (e) { err.textContent = e.message; } finally { btn.disabled = false; }
+  };
+}
+
+const tabs = {
+  async overview() {
+    const s = await api("/admin/stats");
+    const sum = (o) => Object.values(o || {}).reduce((a, b) => a + b, 0);
+    const box = (label, value, sub) => `<div class="card stat"><div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub || ""}</div></div>`;
+    app.innerHTML = `
+      <div class="grid">
+        ${box("Shops live", s.shops.active || 0, `${s.shops.pending || 0} waiting for verification`)}
+        ${box("Products listed", s.active_listings, `${s.variants.verified || 0} verified · ${s.variants.provisional || 0} provisional`)}
+        ${box("Reservations (7 days)", sum(s.reservations_7d), `${s.reservations_7d.collected || 0} collected`)}
+        ${box("Photo scans (7 days)", sum(s.recognition_7d), `${s.recognition_7d.confirmed || 0} confirmed · ${s.recognition_7d.failed || 0} failed`)}
+        ${box("Customers", s.users.customer || 0, `${s.users.shopkeeper || 0} shopkeepers`)}
+        ${box("Review queue", s.open_verifications, "catalogue items to check")}
+      </div>`;
+  },
+
+  async shops() {
+    const status = tabs._shopStatus || "pending";
+    const {shops} = await api("/admin/shops" + (status === "all" ? "" : "?status=" + status));
+    app.innerHTML = `
+      <div class="toolbar">
+        <select id="shop-status">${["pending","active","suspended","all"].map(s => `<option ${s===status?"selected":""}>${s}</option>`).join("")}</select>
+        <span class="muted">${shops.length} shops</span>
+      </div>
+      <div class="card table-wrap">${shops.length ? `<table>
+        <tr><th>Shop</th><th>Location</th><th>Owner</th><th>Products</th><th>Status</th><th></th></tr>
+        ${shops.map(s => `<tr>
+          <td><strong>${esc(s.name)}</strong> ${s.is_demo ? '<span class="pill demo">demo</span>' : ""}<div class="muted">${esc((s.categories||[]).join(", "))}</div></td>
+          <td>${esc(s.locality)}, ${esc(s.city)} ${esc(s.pincode)}<div class="muted">${s.lat.toFixed(5)}, ${s.lng.toFixed(5)} · ${esc(s.location_source)}
+            · <a href="https://www.openstreetmap.org/?mlat=${s.lat}&mlon=${s.lng}#map=18/${s.lat}/${s.lng}" target="_blank" rel="noopener">map</a></div></td>
+          <td>${esc(s.owner_name || "")}<div class="muted">${esc(s.owner_phone)}</div></td>
+          <td>${s.listings}</td>
+          <td><span class="pill ${s.status}">${s.status}</span>${s.location_verified ? "" : '<div class="muted">location unverified</div>'}</td>
+          <td class="row-actions">
+            ${s.status !== "active" || !s.location_verified ? `<button class="btn primary" data-act="verify" data-id="${s.id}">Verify &amp; publish</button>` : ""}
+            ${s.status === "active" ? `<button class="btn danger" data-act="suspend" data-id="${s.id}">Suspend</button>` : ""}
+            ${s.status === "suspended" ? `<button class="btn" data-act="reactivate" data-id="${s.id}">Reactivate</button>` : ""}
+          </td></tr>`).join("")}
+      </table>` : `<div class="empty">No ${status} shops.</div>`}</div>`;
+    document.getElementById("shop-status").onchange = (e) => { tabs._shopStatus = e.target.value; tabs.shops(); };
+    app.querySelectorAll("[data-act]").forEach(b => b.onclick = async () => {
+      const act = b.dataset.act;
+      if (act === "suspend" && !confirm("Suspend this shop? It will disappear from customer search.")) return;
+      b.disabled = true;
+      try {
+        await api(`/admin/shops/${b.dataset.id}/${act}`, {method: "POST", body: JSON.stringify({reason: act === "suspend" ? prompt("Reason (optional)") : null})});
+        tabs.shops();
+      } catch (e) { alert(e.message); b.disabled = false; }
+    });
+  },
+
+  async catalog() {
+    const status = tabs._varStatus || "provisional";
+    const q = tabs._varQuery || "";
+    const params = new URLSearchParams();
+    if (status !== "all") params.set("status", status);
+    if (q) params.set("q", q);
+    const {variants} = await api("/admin/variants?" + params);
+    app.innerHTML = `
+      <div class="toolbar">
+        <select id="var-status">${["provisional","verified","merged","all"].map(s => `<option ${s===status?"selected":""}>${s}</option>`).join("")}</select>
+        <input id="var-q" placeholder="Search catalogue" value="${esc(q)}">
+        <button class="btn" id="var-search">Search</button>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <strong>Merge duplicates</strong>
+        <p class="muted" style="margin:4px 0 10px">Moves every shop's stock from the duplicate into the correct product. Reservations must be closed first.</p>
+        <div class="toolbar" style="margin:0">
+          <input id="merge-src" type="number" placeholder="Duplicate ID">
+          <span class="muted">into</span>
+          <input id="merge-dst" type="number" placeholder="Correct product ID">
+          <button class="btn primary" id="merge-btn">Merge</button>
+        </div>
+      </div>
+      <div class="card table-wrap">${variants.length ? `<table>
+        <tr><th>ID</th><th>Product</th><th>Brand</th><th>Size</th><th>Category</th><th>Shops</th><th>Status</th><th></th></tr>
+        ${variants.map(v => `<tr>
+          <td><code>${v.id}</code></td>
+          <td><strong>${esc(v.display_name)}</strong><div class="muted">${esc((v.aliases||[]).slice(0,4).join(" · "))}</div></td>
+          <td>${esc(v.brand || "—")}</td><td>${esc(v.size_label || "—")} <span class="muted">/${esc(v.sell_unit)}</span></td>
+          <td>${esc(v.category)}</td><td>${v.shops}</td>
+          <td><span class="pill ${v.status}">${v.status}</span>${v.merged_into_id ? `<div class="muted">→ #${v.merged_into_id}</div>` : ""}</td>
+          <td class="row-actions">
+            ${v.status === "provisional" ? `<button class="btn primary" data-verify="${v.id}">Approve</button>` : ""}
+            ${v.status !== "merged" ? `<button class="btn" data-rename="${v.id}" data-name="${esc(v.display_name)}">Rename</button>` : ""}
+          </td></tr>`).join("")}
+      </table>` : `<div class="empty">Nothing here.</div>`}</div>`;
+    document.getElementById("var-status").onchange = (e) => { tabs._varStatus = e.target.value; tabs.catalog(); };
+    document.getElementById("var-search").onclick = () => { tabs._varQuery = document.getElementById("var-q").value; tabs.catalog(); };
+    document.getElementById("merge-btn").onclick = async () => {
+      const source_id = +document.getElementById("merge-src").value, target_id = +document.getElementById("merge-dst").value;
+      if (!source_id || !target_id) return alert("Enter both IDs");
+      if (!confirm(`Merge #${source_id} into #${target_id}? This moves stock and cannot be undone automatically.`)) return;
+      try { const r = await api("/admin/variants/merge", {method: "POST", body: JSON.stringify({source_id, target_id})});
+            alert(`Merged. ${r.listings_moved} shop listings moved.`); tabs.catalog(); }
+      catch (e) { alert(e.message); }
+    };
+    app.querySelectorAll("[data-verify]").forEach(b => b.onclick = async () => {
+      b.disabled = true; try { await api(`/admin/variants/${b.dataset.verify}/verify`, {method: "POST"}); tabs.catalog(); } catch (e) { alert(e.message); b.disabled = false; }
+    });
+    app.querySelectorAll("[data-rename]").forEach(b => b.onclick = async () => {
+      const name = prompt("Display name", b.dataset.name); if (!name) return;
+      try { await api(`/admin/variants/${b.dataset.rename}`, {method: "PATCH", body: JSON.stringify({display_name: name})}); tabs.catalog(); } catch (e) { alert(e.message); }
+    });
+  },
+
+  async queue() {
+    const {verifications} = await api("/admin/verifications?status=open");
+    app.innerHTML = `<div class="card table-wrap">${verifications.length ? `<table>
+      <tr><th>Type</th><th>Details</th><th>Shop</th><th>Raised</th><th></th></tr>
+      ${verifications.map(v => `<tr>
+        <td><span class="pill open">${esc(v.kind.replace("_", " "))}</span></td>
+        <td>${v.kind === "name_correction"
+              ? `Catalogue: <strong>${esc(v.payload.catalog_name)}</strong><br>Shop calls it: <strong>${esc(v.payload.suggested_name)}</strong>`
+              : `<strong>${esc(v.variant?.display_name || v.payload.name)}</strong> <span class="muted">#${v.variant?.id ?? ""}</span><br><span class="muted">${esc(v.payload.brand || "no brand")} · ${esc(v.payload.size_label || "no size")} · ${esc(v.payload.category)}</span>`}</td>
+        <td>${esc(v.shop_name || "—")}</td><td>${when(v.created_at)}</td>
+        <td class="row-actions">
+          ${v.kind === "provisional_product" && v.variant ? `<button class="btn primary" data-approve="${v.variant.id}">Approve product</button>` : ""}
+          <button class="btn" data-resolve="${v.id}" data-status="resolved">Mark done</button>
+          <button class="btn danger" data-resolve="${v.id}" data-status="rejected">Reject</button>
+        </td></tr>`).join("")}
+    </table>` : `<div class="empty">The review queue is empty.</div>`}</div>`;
+    app.querySelectorAll("[data-approve]").forEach(b => b.onclick = async () => { await api(`/admin/variants/${b.dataset.approve}/verify`, {method: "POST"}); tabs.queue(); });
+    app.querySelectorAll("[data-resolve]").forEach(b => b.onclick = async () => {
+      await api(`/admin/verifications/${b.dataset.resolve}/resolve`, {method: "POST", body: JSON.stringify({status: b.dataset.status})}); tabs.queue();
+    });
+  },
+
+  async reservations() {
+    const status = tabs._resStatus || "";
+    const {reservations} = await api("/admin/reservations" + (status ? "?status=" + status : ""));
+    app.innerHTML = `
+      <div class="toolbar"><select id="res-status">${["","pending","confirmed","collected","cancelled","rejected","expired"].map(s => `<option value="${s}" ${s===status?"selected":""}>${s || "all"}</option>`).join("")}</select></div>
+      <div class="card table-wrap">${reservations.length ? `<table>
+        <tr><th>Code</th><th>Shop</th><th>Items</th><th>Customer</th><th>Status</th><th>Created</th></tr>
+        ${reservations.map(r => `<tr><td><code>${r.code}</code></td><td>${esc(r.shop.name)}</td>
+          <td>${r.items.map(i => `${i.quantity} ${esc(i.unit_label)} × ${esc(i.name)} <span class="muted">${rupees(i.unit_price_paise)}</span>`).join("<br>")}</td>
+          <td>${esc(r.customer?.name || "")} <span class="muted">••${esc(r.customer?.phone_last4 || "")}</span></td>
+          <td><span class="pill ${r.status}">${r.status}</span></td><td>${when(r.created_at)}</td></tr>`).join("")}
+      </table>` : `<div class="empty">No reservations.</div>`}</div>`;
+    document.getElementById("res-status").onchange = (e) => { tabs._resStatus = e.target.value; tabs.reservations(); };
+  },
+
+  async audit() {
+    const {entries} = await api("/admin/audit?limit=200");
+    app.innerHTML = `<div class="card table-wrap">${entries.length ? `<table>
+      <tr><th>When</th><th>Action</th><th>Entity</th><th>Actor</th><th>Details</th></tr>
+      ${entries.map(a => `<tr><td>${when(a.created_at)}</td><td>${esc(a.action)}</td><td>${esc(a.entity_type)} #${esc(a.entity_id)}</td>
+        <td>${a.actor_user_id ?? "system"}</td><td><code>${esc(JSON.stringify(a.data)).slice(0, 160)}</code></td></tr>`).join("")}
+    </table>` : `<div class="empty">No audit entries yet.</div>`}</div>`;
+  },
+};
+
+async function show(tab) {
+  document.querySelectorAll("#nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  app.innerHTML = `<div class="empty">Loading…</div>`;
+  try { await tabs[tab](); } catch (e) { app.innerHTML = `<div class="card error">${esc(e.message)}</div>`; }
+}
+
+function start() {
+  document.getElementById("nav").hidden = false;
+  document.getElementById("logout").hidden = false;
+  document.querySelectorAll("#nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
+  show("overview");
+}
+
+token ? start() : renderLogin();
+</script>
+</body>
+</html>

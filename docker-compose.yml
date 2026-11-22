@@ -1,0 +1,40 @@
+# Production-like local stack: PostgreSQL + API.
+#   docker compose up --build
+#   docker compose exec api python -m app.seed           # catalogue + demo shops
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: milega
+      POSTGRES_USER: milega
+      POSTGRES_PASSWORD: milega-local-only
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U milega"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+psycopg://milega:milega-local-only@db:5432/milega
+      JWT_SECRET: ${JWT_SECRET:-local-compose-secret-change-me-0123456789abcdef}
+      SMS_PROVIDER: console
+      EXPOSE_DEV_OTP: "true"
+      ADMIN_PHONES: "+919000000001"
+      VISION_PROVIDER: ${VISION_PROVIDER:-auto}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      STORAGE_DIR: /srv/data/uploads
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/srv/data
+
+volumes:
+  pgdata:
+  uploads:

@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.pyc
+backend/.venv/
+backend/.env
+backend/data/
+
+# Local build tooling (Gradle distribution / caches kept off the system drive)
+.tooling/
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/app/release/
+*.keystore
+*.jks
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Local-only
+.claude/
+*.db
+*.apk
+.pytest_cache/
