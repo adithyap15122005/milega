@@ -10,10 +10,11 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.milega.app.data.CategoryDto
 import com.milega.app.data.MilegaApi
-import com.milega.app.data.SessionStore
 import com.milega.app.data.NotificationWorker
-import org.osmdroid.config.Configuration
-import java.io.File
+import com.milega.app.data.SessionStore
+import com.milega.app.data.local.MilegaDatabase
+import com.milega.app.data.push.Push
+import com.milega.app.data.sync.OutboxRepository
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -25,12 +26,9 @@ class MilegaApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         createNotificationChannel()
-        Configuration.getInstance().apply {
-            userAgentValue = packageName
-            osmdroidBasePath = File(cacheDir, "osmdroid")
-            osmdroidTileCache = File(cacheDir, "osmdroid/tiles")
-            tileFileSystemCacheMaxBytes = 60L * 1024 * 1024 // keep map cache small on budget phones
-        }
+        Push.init(this)
+        // Anything left in the offline outbox (e.g. after a reboot) syncs when the network is back.
+        container.outbox.schedule()
     }
 
     private fun createNotificationChannel() {
@@ -46,19 +44,22 @@ class MilegaApp : Application() {
 }
 
 class AppContainer(context: Context) {
-    val session = SessionStore(context)
-    val api = MilegaApi(session)
     private val appContext = context.applicationContext
+    val session = SessionStore(appContext)
+    val api = MilegaApi(session)
+    val database: MilegaDatabase by lazy { MilegaDatabase.create(appContext) }
+    val outbox: OutboxRepository by lazy { OutboxRepository(appContext, database.outbox()) }
     private var categoryCache: List<CategoryDto>? = null
 
     suspend fun categories(): List<CategoryDto> =
         categoryCache ?: api.categories().categories.also { categoryCache = it }
 
-    /** Poll for reservation updates in the background (every 15 min, the Android minimum). */
+    /** Background fallback for notifications (every 15 min, the Android minimum) + push token registration. */
     fun scheduleNotifications() {
         val request = PeriodicWorkRequestBuilder<NotificationWorker>(15, TimeUnit.MINUTES).build()
         WorkManager.getInstance(appContext)
             .enqueueUniquePeriodicWork("notifications", ExistingPeriodicWorkPolicy.KEEP, request)
+        Push.scheduleRegistration(appContext)
     }
 
     fun cancelNotifications() {

@@ -33,6 +33,17 @@ import com.milega.app.util.rupees
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+/** What the customer picked to reserve. */
+data class ReserveTarget(
+    val listingId: Long,
+    val productName: String,
+    val shopName: String,
+    val pricePaise: Long?,
+    val unitLabel: String,
+    val sellUnit: String,
+    val available: Double,
+)
+
 @Composable
 fun ReserveDialog(container: AppContainer, target: ReserveTarget, onDismiss: () -> Unit, onViewReservations: () -> Unit) {
     val context = LocalContext.current

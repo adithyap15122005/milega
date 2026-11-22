@@ -185,4 +185,64 @@ class MilegaApi(private val session: SessionStore) {
     // ----------------------------------------------------------------- voice
 
     suspend fun interpretVoice(text: String, language: String?): VoiceResp = post("api/v1/voice/interpret", VoiceBody(text, language))
+
+    // ------------------------------------------------------------- discovery
+
+    suspend fun localities(q: String, sessionToken: String?, lat: Double?, lng: Double?, lang: String): LocalitiesResp =
+        get("api/v1/localities", mapOf("q" to q, "session_token" to sessionToken, "lat" to lat, "lng" to lng, "lang" to lang))
+
+    suspend fun nearestLocality(lat: Double, lng: Double): NearestLocalityResp =
+        get("api/v1/localities/nearest", mapOf("lat" to lat, "lng" to lng))
+
+    suspend fun resolvePlace(placeId: String, sessionToken: String?): ResolvedPlace =
+        get("api/v1/places/resolve", mapOf("place_id" to placeId, "session_token" to sessionToken))
+
+    suspend fun discover(
+        lat: Double, lng: Double, radiusKm: Double = 2.0, category: String? = null, q: String? = null,
+        includeExternal: Boolean = true, pageToken: String? = null, lang: String? = null,
+    ): DiscoverResp = get("api/v1/discover", mapOf(
+        "lat" to lat, "lng" to lng, "radius_km" to radiusKm, "category" to category, "q" to q,
+        "include_external" to includeExternal, "page_token" to pageToken, "lang" to lang,
+    ))
+
+    suspend fun viewport(minLat: Double, minLng: Double, maxLat: Double, maxLng: Double, category: String?): ViewportResp =
+        get("api/v1/discover/viewport", mapOf("min_lat" to minLat, "min_lng" to minLng, "max_lat" to maxLat,
+            "max_lng" to maxLng, "category" to category))
+
+    suspend fun place(placeId: String, lat: Double?, lng: Double?, basic: Boolean = false): PlaceDetailResp =
+        get("api/v1/places/${java.net.URLEncoder.encode(placeId, "UTF-8")}",
+            mapOf("lat" to lat, "lng" to lng, "fields" to if (basic) "basic" else "full"))
+
+    suspend fun searchFull(
+        q: String, lat: Double?, lng: Double?, sort: String, category: String? = null, radiusKm: Double? = null,
+        freshOnly: Boolean = false, offset: Int = 0, limit: Int = 20,
+    ): SearchResp = get("api/v1/search", mapOf(
+        "q" to q, "lat" to lat, "lng" to lng, "sort" to sort, "category" to category, "radius_km" to radiusKm,
+        "fresh_only" to freshOnly, "offset" to offset, "limit" to limit,
+    ))
+
+    suspend fun suggest(q: String, lat: Double?, lng: Double?): SuggestResp =
+        get("api/v1/search/suggest", mapOf("q" to q, "lat" to lat, "lng" to lng))
+
+    suspend fun product(variantId: Long, lat: Double?, lng: Double?): ProductDetailResp =
+        get("api/v1/products/$variantId", mapOf("lat" to lat, "lng" to lng))
+
+    suspend fun productsNearby(lat: Double, lng: Double, radiusKm: Double = 3.0): NearbyItemsResp =
+        get("api/v1/products/nearby", mapOf("lat" to lat, "lng" to lng, "radius_km" to radiusKm))
+
+    // ------------------------------------------------------ saved / reports
+
+    suspend fun saved(): SavedResp = get("api/v1/saved")
+    suspend fun save(body: SaveBody): SavedFlag = post("api/v1/saved", body)
+    suspend fun unsave(shopId: Long? = null, placeId: String? = null): SavedFlag =
+        json.decodeFromString(call("DELETE", "api/v1/saved", mapOf("shop_id" to shopId, "place_id" to placeId)))
+
+    suspend fun report(body: ReportBody): ReportResp = post("api/v1/reports", body)
+
+    suspend fun claimPlace(placeId: String): ClaimResp = post("api/v1/shops/mine/google-place", ClaimBody(placeId))
+
+    // ----------------------------------------------------------------- push
+
+    suspend fun registerDevice(token: String, appVersion: String): RegisteredResp =
+        post("api/v1/devices", DeviceBody(token, appVersion = appVersion))
 }

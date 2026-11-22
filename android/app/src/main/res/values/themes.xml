@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand_background">#F6F7F4</color>
-    <color name="ic_launcher_background">#0B6E4F</color>
+    <color name="brand_background">#FBF8F1</color>
+    <color name="ic_launcher_background">#103B30</color>
 
     <style name="Theme.Milega" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowBackground">@color/brand_background</item>
-        <item name="colorPrimary">#0B6E4F</item>
-        <item name="colorAccent">#F4A300</item>
+        <item name="colorPrimary">#155642</item>
+        <item name="colorAccent">#EF7349</item>
     </style>
 </resources>

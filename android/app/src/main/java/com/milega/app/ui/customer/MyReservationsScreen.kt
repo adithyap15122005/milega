@@ -46,7 +46,6 @@ import androidx.navigation.NavController
 import com.milega.app.AppContainer
 import com.milega.app.R
 import com.milega.app.data.ReservationDto
-import com.milega.app.ui.CustomerBottomBar
 import com.milega.app.ui.Routes
 import com.milega.app.ui.components.EmptyState
 import com.milega.app.ui.components.LoadableContent
@@ -98,10 +97,8 @@ fun MyReservationsScreen(container: AppContainer, nav: NavController) {
         }
     }
 
-    Scaffold(bottomBar = { CustomerBottomBar(nav, Routes.C_RESERVATIONS) }, containerColor = MaterialTheme.colorScheme.background) { padding ->
+    com.milega.app.ui.components.AppScaffold(title = stringResource(R.string.my_reservations), onBack = { nav.popBackStack() }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            Text(stringResource(R.string.my_reservations), style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp))
             message?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
             LoadableContent(state) { list ->
                 if (list.isEmpty()) {

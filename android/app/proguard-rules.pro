@@ -7,5 +7,5 @@
 }
 -keep,includedescriptorclasses class com.milega.app.**$$serializer { *; }
 
-# osmdroid
--dontwarn org.osmdroid.**
+# Room entities / DAOs are generated; keep the database implementation.
+-keep class * extends androidx.room.RoomDatabase

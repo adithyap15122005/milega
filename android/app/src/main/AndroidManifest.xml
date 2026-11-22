@@ -19,6 +19,10 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
         </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <package android:name="com.google.android.apps.maps" />
     </queries>
 
     <application
@@ -32,16 +36,44 @@
         android:enableOnBackInvokedCallback="true"
         android:theme="@style/Theme.Milega">
 
+        <!-- Maps SDK for Android key, injected from android/local.properties (never committed). -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|density"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- milega://shop/12, milega://product/34, milega://reservations -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="milega" />
+            </intent-filter>
         </activity>
+
+        <service
+            android:name=".data.push.MilegaMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="reservations" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_notification" />
 
         <!-- Persists the in-app language choice on Android 12 and below. -->
         <service

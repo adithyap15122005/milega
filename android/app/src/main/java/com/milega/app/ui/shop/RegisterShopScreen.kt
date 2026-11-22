@@ -46,8 +46,7 @@ import com.milega.app.currentLanguage
 import com.milega.app.data.HoursDto
 import com.milega.app.data.ShopBody
 import com.milega.app.ui.components.AppScaffold
-import com.milega.app.ui.components.MapPin
-import com.milega.app.ui.components.OsmMap
+import com.milega.app.ui.components.MapPreview
 import com.milega.app.ui.components.PrimaryButton
 import com.milega.app.ui.components.SectionTitle
 import com.milega.app.ui.components.rememberLoadable
@@ -64,16 +63,27 @@ private val DAY_LABELS = listOf(R.string.mon, R.string.tue, R.string.wed, R.stri
 /** Minimal onboarding: name, location, what you sell, hours. Everything else is optional later. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun RegisterShopScreen(container: AppContainer, onBack: () -> Unit, onDone: () -> Unit) {
+fun RegisterShopScreen(
+    container: AppContainer,
+    onBack: () -> Unit,
+    onDone: () -> Unit,
+    prefillPlaceId: String? = null,
+    prefillName: String = "",
+    prefillLat: Double? = null,
+    prefillLng: Double? = null,
+    prefillAddress: String = "",
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val lang = currentLanguage()
     val categories = rememberLoadable { container.categories() }
 
-    var name by rememberSaveable { mutableStateOf("") }
-    var place by remember { mutableStateOf<Place?>(null) }
-    var source by remember { mutableStateOf("gps") }
-    var addressLine by rememberSaveable { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf(prefillName) }
+    var place by remember {
+        mutableStateOf(if (prefillLat != null && prefillLng != null) Place(prefillLat, prefillLng, prefillName, addressLine = prefillAddress) else null)
+    }
+    var source by remember { mutableStateOf(if (prefillLat != null) "manual" else "gps") }
+    var addressLine by rememberSaveable { mutableStateOf(prefillAddress) }
     var locality by rememberSaveable { mutableStateOf("") }
     var city by rememberSaveable { mutableStateOf("") }
     var pincode by rememberSaveable { mutableStateOf("") }
@@ -150,9 +160,7 @@ fun RegisterShopScreen(container: AppContainer, onBack: () -> Unit, onDone: () -
                 place?.let { p ->
                     Spacer(Modifier.height(10.dp))
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        OsmMap(p.lat, p.lng, listOf(MapPin(0, p.lat, p.lng, name.ifBlank { "Shop" })),
-                            Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(16.dp)),
-                            zoom = 17.0, interactive = false, youAreHere = false)
+                        MapPreview(p.lat, p.lng, name.ifBlank { "Shop" }, Modifier.fillMaxWidth().height(150.dp), zoom = 17f)
                     }
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(addressLine, { addressLine = it.take(255) }, label = { Text(stringResource(R.string.address)) },
@@ -222,6 +230,7 @@ fun RegisterShopScreen(container: AppContainer, onBack: () -> Unit, onDone: () -
                                     )
                                 )
                                 container.session.applyUser(container.api.me())
+                                prefillPlaceId?.let { id -> runCatching { container.api.claimPlace(id) } }
                                 container.session.update { it.copy(mode = "shop") }
                                 onDone()
                             } catch (e: Exception) {

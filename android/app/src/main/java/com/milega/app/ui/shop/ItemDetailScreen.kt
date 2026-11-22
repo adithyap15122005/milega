@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,10 +45,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.milega.app.AppContainer
 import com.milega.app.R
-import com.milega.app.data.AdjustBody
+import com.milega.app.data.local.PendingStockOp
+import com.milega.app.data.sync.projectOnHand
 import com.milega.app.data.EventDto
 import com.milega.app.data.ListingDto
 import com.milega.app.data.ListingPatch
@@ -80,23 +83,37 @@ fun ItemDetailScreen(container: AppContainer, nav: NavController, listingId: Lon
     val events = rememberLoadable(listingId) { container.api.listingEvents(listingId).events }
     var dialog by remember { mutableStateOf<Dialog?>(null) }
 
-    fun adjust(mode: String, quantity: Double, key: String) = scope.launch {
-        try {
-            val r = container.api.adjust(listingId, AdjustBody(mode, quantity), key)
-            listing.set(r.listing)
+    val ops by container.outbox.all.collectAsStateWithLifecycle(initialValue = emptyList())
+    val mine = ops.filter { it.listingId == listingId }
+    val unsynced = mine.count { it.state != PendingStockOp.STATE_FAILED }
+    var reviewing by remember { mutableStateOf<PendingStockOp?>(null) }
+    // Once this product's queued changes reach the server, show the server's numbers again.
+    LaunchedEffect(unsynced) {
+        if (unsynced == 0) {
+            listing.load(silent = true)
             events.load(silent = true)
-            dialog = null
-            r.warning?.let { snackbar.showSnackbar(context.getString(R.string.overcommitted_warning)) }
-        } catch (e: Exception) {
-            snackbar.showSnackbar(errorText(context, e))
         }
+    }
+
+    /** Saved on the phone first (offline-safe), then synced exactly once by the outbox. */
+    @Suppress("UNUSED_PARAMETER")
+    fun adjust(mode: String, quantity: Double, key: String) = scope.launch {
+        val item = listing.data ?: return@launch
+        val shopId = container.session.current.shopId ?: return@launch
+        container.outbox.enqueue(shopId, item, mode, quantity)
+        dialog = null
+        snackbar.showSnackbar(context.getString(R.string.saved_on_phone))
     }
 
     ShopkeeperTheme {
         AppScaffold(title = listing.data?.name ?: "", onBack = { nav.popBackStack() }, snackbar = snackbar) { padding ->
-            LoadableContent(listing) { item ->
+            LoadableContent(listing) { serverItem ->
+                val item = serverItem.copy(onHand = projectOnHand(serverItem.onHand, mine))
                 LazyColumn(contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = padding.calculateTopPadding(), bottom = 32.dp)) {
-                    item { StockHeader(item) }
+                    item {
+                        OutboxBanner(mine, onReview = { reviewing = mine.firstOrNull { it.state == PendingStockOp.STATE_FAILED } })
+                        StockHeader(item)
+                    }
                     item {
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -173,6 +190,10 @@ fun ItemDetailScreen(container: AppContainer, nav: NavController, listingId: Lon
                 }
             }
         }
+    }
+    reviewing?.let { op ->
+        FailedChangeDialog(op, onRetry = { scope.launch { container.outbox.retry(op.id) }; reviewing = null },
+            onDiscard = { scope.launch { container.outbox.discard(op.id) }; reviewing = null }, onDismiss = { reviewing = null })
     }
 }
 

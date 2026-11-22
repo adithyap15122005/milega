@@ -61,6 +61,14 @@ data class ShopDto(
     val locationVerified: Boolean? = null,
     val visibleToCustomers: Boolean? = null,
     val productsInStock: Int? = null,
+    /** verified_merchant | unverified_merchant | demo */
+    val merchantState: String = "verified_merchant",
+    val provenance: String = "milega",
+    val reservable: Boolean = true,
+    val googlePlaceId: String? = null,
+    val placeLinkStatus: String? = null,
+    val inventoryUpdatedAt: String? = null,
+    val verifiedAt: String? = null,
 )
 
 @Serializable
@@ -192,7 +200,14 @@ data class AddListingBody(
 data class ListingPatch(val pricePaise: Long? = null, val customName: String? = null, val clearPrice: Boolean = false)
 
 @Serializable
-data class AdjustBody(val mode: String, val quantity: Double = 0.0, val source: String = "manual", val note: String? = null)
+data class AdjustBody(
+    val mode: String,
+    val quantity: Double = 0.0,
+    val source: String = "manual",
+    val note: String? = null,
+    /** ISO-8601 time the shopkeeper made the change (offline outbox). */
+    val clientRecordedAt: String? = null,
+)
 
 @Serializable
 data class AdjustResp(val listing: ListingDto, val event: EventDto, val replayed: Boolean = false, val warning: String? = null)
@@ -203,7 +218,13 @@ data class OkResp(val ok: Boolean = true)
 // --------------------------------------------------------------------- search
 
 @Serializable
-data class Interpretation(val terms: List<String> = emptyList(), val size: String? = null, val maxPricePaise: Long? = null, val category: String? = null)
+data class Interpretation(
+    val terms: List<String> = emptyList(),
+    val size: String? = null,
+    val maxPricePaise: Long? = null,
+    val category: String? = null,
+    val shopCategory: String? = null,
+)
 
 @Serializable
 data class Availability(val status: String, val available: Double = 0.0, val stockConfirmedAt: String? = null, val ageHours: Double? = null)
@@ -213,17 +234,24 @@ data class OfferShop(
     val id: Long,
     val name: String,
     val locality: String = "",
+    val addressLine: String = "",
     val lat: Double,
     val lng: Double,
     val verified: Boolean = false,
     val isDemo: Boolean = false,
+    val merchantState: String = "verified_merchant",
     val openNow: Boolean? = null,
 )
 
 @Serializable
+data class UnitPrice(val paise: Long, val per: String)
+
+@Serializable
 data class Offer(
     val listingId: Long,
+    val variantId: Long = 0,
     val pricePaise: Long? = null,
+    val unitPrice: UnitPrice? = null,
     val distanceM: Double? = null,
     val availability: Availability,
     val reservable: Boolean = false,
@@ -237,16 +265,42 @@ data class SearchResult(
     val matchScore: Double = 0.0,
     val offers: List<Offer> = emptyList(),
     val minPricePaise: Long? = null,
+    val maxPricePaise: Long? = null,
     val inStockCount: Int = 0,
+    val shopCount: Int = 0,
 )
+
+@Serializable
+data class Landmark(val name: String, val lat: Double, val lng: Double, val placeId: String? = null)
+
+@Serializable
+data class SearchLocation(
+    /** device | query_locality | landmark | none */
+    val source: String = "none",
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val locality: LocalityDto? = null,
+    val landmark: Landmark? = null,
+    val unresolvedLandmark: String? = null,
+)
+
+@Serializable
+data class ExternalHint(val available: Boolean = false, val query: String? = null, val category: String? = null)
 
 @Serializable
 data class SearchResp(
     val query: String = "",
+    /** product | shop_category | locality */
+    val intent: String = "product",
     val interpretation: Interpretation = Interpretation(),
+    val location: SearchLocation = SearchLocation(),
     val radiusKm: Double = 5.0,
     val shopsInRange: Int = 0,
+    val shops: List<ShopDto> = emptyList(),
     val results: List<SearchResult> = emptyList(),
+    val totalResults: Int = 0,
+    val offset: Int = 0,
+    val externalHint: ExternalHint = ExternalHint(),
 )
 
 @Serializable
@@ -407,3 +461,181 @@ data class VoiceResp(
     val proposal: Proposal? = null,
     val problems: List<String> = emptyList(),
 )
+
+// ---------------------------------------------------------------- discovery
+
+@Serializable
+data class LocalityDto(
+    val slug: String,
+    val name: String,
+    val nameKn: String? = null,
+    val city: String = "Bengaluru",
+    val lat: Double,
+    val lng: Double,
+    val radiusM: Int = 2500,
+)
+
+@Serializable
+data class Attribution(val provider: String = "Google Maps", val text: String = "", val note: String = "")
+
+@Serializable
+data class PlacePrediction(val placeId: String, val text: String = "", val mainText: String = "", val secondaryText: String = "")
+
+@Serializable
+data class LocalitiesResp(
+    val localities: List<LocalityDto> = emptyList(),
+    val googlePredictions: List<PlacePrediction> = emptyList(),
+    val googleStatus: String = "skipped",
+    val attribution: Attribution? = null,
+)
+
+@Serializable
+data class NearestLocalityResp(val locality: LocalityDto? = null)
+
+@Serializable
+data class ResolvedPlace(val placeId: String, val name: String = "", val address: String = "", val lat: Double, val lng: Double)
+
+/** A business found through Google Places. Never has Milega stock, prices or reservations. */
+@Serializable
+data class ExternalPlace(
+    val placeId: String,
+    val name: String,
+    val address: String = "",
+    val fullAddress: String = "",
+    val lat: Double? = null,
+    val lng: Double? = null,
+    val primaryType: String? = null,
+    val typeLabel: String? = null,
+    val category: String? = null,
+    val mapsUri: String? = null,
+    val businessStatus: String? = null,
+    val provenance: String = "google",
+    val merchantState: String = "google_discovered",
+    val reservable: Boolean = false,
+    val distanceM: Double? = null,
+    val phone: String? = null,
+    val website: String? = null,
+    val rating: Double? = null,
+    val userRatingCount: Int? = null,
+    val openNow: Boolean? = null,
+    val weekdayHours: List<String> = emptyList(),
+)
+
+@Serializable
+data class LatLngDto(val lat: Double, val lng: Double)
+
+@Serializable
+data class DiscoverResp(
+    val center: LatLngDto,
+    val radiusKm: Double = 2.0,
+    val category: String? = null,
+    val merchants: List<ShopDto> = emptyList(),
+    val external: List<ExternalPlace> = emptyList(),
+    /** ok | not_configured | quota_exceeded | denied | unavailable | outside_service_area | disabled */
+    val externalStatus: String = "disabled",
+    val nextPageToken: String? = null,
+    val attribution: Attribution? = null,
+)
+
+@Serializable
+data class ViewportResp(val merchants: List<ShopDto> = emptyList())
+
+@Serializable
+data class PlaceDetailResp(val place: ExternalPlace? = null, val milegaShopId: Long? = null, val attribution: Attribution? = null)
+
+// ------------------------------------------------------------ product pages
+
+@Serializable
+data class OfferSummary(val minPricePaise: Long? = null, val maxPricePaise: Long? = null, val inStockCount: Int = 0, val shopCount: Int = 0)
+
+@Serializable
+data class VariantDetail(
+    val id: Long,
+    val displayName: String,
+    val brand: String? = null,
+    val productName: String? = null,
+    val category: String = "other",
+    val sizeLabel: String? = null,
+    val sellUnit: String = "pc",
+    val isLoose: Boolean = false,
+    val status: String = "verified",
+    val aliases: List<String> = emptyList(),
+    val description: String? = null,
+)
+
+@Serializable
+data class AltProduct(
+    val variant: VariantDto,
+    val minPricePaise: Long? = null,
+    val maxPricePaise: Long? = null,
+    val inStockCount: Int = 0,
+    val shopCount: Int = 0,
+    val bestUnitPrice: UnitPrice? = null,
+)
+
+@Serializable
+data class ProductDetailResp(
+    val variant: VariantDetail,
+    val offers: List<Offer> = emptyList(),
+    val summary: OfferSummary = OfferSummary(),
+    val otherSizes: List<AltProduct> = emptyList(),
+    val substitutes: List<AltProduct> = emptyList(),
+    val radiusKm: Double = 5.0,
+    val pickupNote: String = "",
+)
+
+@Serializable
+data class NearbyItem(
+    val variant: VariantDto,
+    val offers: Int = 0,
+    val minPricePaise: Long? = null,
+    val nearestM: Double? = null,
+    val freshest: String? = null,
+)
+
+@Serializable
+data class NearbyItemsResp(val items: List<NearbyItem> = emptyList())
+
+@Serializable
+data class SuggestShop(val id: Long, val name: String, val locality: String = "", val distanceM: Double? = null)
+
+@Serializable
+data class SuggestResp(
+    val query: String = "",
+    val products: List<VariantDto> = emptyList(),
+    val categories: List<CategoryDto> = emptyList(),
+    val localities: List<LocalityDto> = emptyList(),
+    val shops: List<SuggestShop> = emptyList(),
+)
+
+// ------------------------------------------------------- saved / reports / push
+
+@Serializable
+data class SavedPlaceRef(val placeId: String, val savedAt: String = "")
+
+@Serializable
+data class SavedResp(val shops: List<ShopDto> = emptyList(), val places: List<SavedPlaceRef> = emptyList())
+
+@Serializable
+data class SaveBody(val shopId: Long? = null, val placeId: String? = null)
+
+@Serializable
+data class SavedFlag(val saved: Boolean = false)
+
+@Serializable
+data class ReportBody(val targetType: String, val targetId: String, val reason: String, val note: String? = null)
+
+@Serializable
+data class ReportResp(val id: Long, val status: String = "open")
+
+@Serializable
+data class DeviceBody(val token: String, val platform: String = "android", val appVersion: String? = null)
+
+@Serializable
+data class RegisteredResp(val registered: Boolean = false)
+
+@Serializable
+data class ClaimBody(val placeId: String)
+
+@Serializable
+data class ClaimResp(val googlePlaceId: String? = null, val placeLinkStatus: String = "none")
