@@ -46,6 +46,17 @@ class UTCDateTime(TypeDecorator):
         return value.astimezone(timezone.utc)
 
 
+def release_sqlite_lock(db: Session) -> None:
+    """End the current transaction before a slow external call, on SQLite only.
+
+    SQLite (with BEGIN IMMEDIATE) holds a database-wide write lock for the whole
+    transaction, which would block other writers such as the provider usage meter
+    while we wait on Google. PostgreSQL locks rows, so this is a no-op there.
+    """
+    if db.get_bind().dialect.name == "sqlite" and db.in_transaction():
+        db.commit()
+
+
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 

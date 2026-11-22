@@ -93,6 +93,7 @@ class Shop(TimestampMixin, Base):
         Index("ix_shops_status", "status"),
         CheckConstraint("lat BETWEEN -90 AND 90", name="ck_shops_lat"),
         CheckConstraint("lng BETWEEN -180 AND 180", name="ck_shops_lng"),
+        UniqueConstraint("google_place_id", name="uq_shops_google_place_id"),
     )
 
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
@@ -114,6 +115,11 @@ class Shop(TimestampMixin, Base):
     preferred_language: Mapped[str] = mapped_column(String(8), default="en")
     is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     verified_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # Source-aware identity: the Google Place this merchant has claimed. Only the
+    # place ID is stored (Google terms allow caching IDs). One merchant per place.
+    google_place_id: Mapped[str | None] = mapped_column(String(255))
+    # none | pending (claimed, admin must confirm) | verified | rejected
+    place_link_status: Mapped[str] = mapped_column(String(12), default="none", nullable=False)
 
     owner: Mapped[User] = relationship(back_populates="shop")
     hours: Mapped[list["ShopHours"]] = relationship(
@@ -278,6 +284,8 @@ class InventoryEvent(Base):
     reference_id: Mapped[str | None] = mapped_column(String(64))
     idempotency_key: Mapped[str | None] = mapped_column(String(120), unique=True)
     note: Mapped[str | None] = mapped_column(String(255))
+    # When the shopkeeper actually made the change (offline edits sync later).
+    client_recorded_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
 
 
@@ -390,7 +398,10 @@ class ReservationItem(Base):
 
 class Notification(Base):
     __tablename__ = "notifications"
-    __table_args__ = (Index("ix_notifications_user_created", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_notifications_user_created", "user_id", "created_at"),
+        Index("ix_notifications_push_status", "push_status"),
+    )
 
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
@@ -399,7 +410,117 @@ class Notification(Base):
     body: Mapped[str] = mapped_column(String(400))
     data: Mapped[dict] = mapped_column(JSON, default=dict)
     read_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    # Push delivery outbox: pending | sent | skipped (no device / push off) | failed
+    push_status: Mapped[str] = mapped_column(String(10), default="pending", nullable=False)
+    push_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    pushed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+
+
+class NotificationDevice(Base):
+    """An FCM registration token for one installed app."""
+
+    __tablename__ = "notification_devices"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token: Mapped[str] = mapped_column(String(512), unique=True)
+    platform: Mapped[str] = mapped_column(String(12), default="android")
+    app_version: Mapped[str | None] = mapped_column(String(32))
+    failure_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    disabled_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    last_seen_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+
+
+# ------------------------------------------------------------------ discovery
+
+
+class Locality(Base):
+    """A searchable Bengaluru neighbourhood (approximate centre, not a boundary)."""
+
+    __tablename__ = "localities"
+    __table_args__ = (Index("ix_localities_lat_lng", "lat", "lng"),)
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(60), unique=True)
+    name: Mapped[str] = mapped_column(String(80))
+    name_kn: Mapped[str | None] = mapped_column(String(80))
+    city: Mapped[str] = mapped_column(String(40), default="Bengaluru")
+    lat: Mapped[float] = mapped_column(Float)
+    lng: Mapped[float] = mapped_column(Float)
+    radius_m: Mapped[int] = mapped_column(Integer, default=2500)
+    aliases: Mapped[list] = mapped_column(JSON, default=list)
+    search_text: Mapped[str] = mapped_column(Text, default="")
+    source: Mapped[str] = mapped_column(String(12), default="curated")  # curated | admin
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class SavedPlace(Base):
+    """A customer's saved shop: either a Milega merchant or a Google place ID."""
+
+    __tablename__ = "saved_places"
+    __table_args__ = (
+        UniqueConstraint("user_id", "shop_id", name="uq_saved_user_shop"),
+        UniqueConstraint("user_id", "google_place_id", name="uq_saved_user_place"),
+        CheckConstraint("(shop_id IS NOT NULL) OR (google_place_id IS NOT NULL)", name="ck_saved_target"),
+    )
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    shop_id: Mapped[int | None] = mapped_column(ForeignKey("shops.id", ondelete="CASCADE"))
+    google_place_id: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+
+
+class Report(Base):
+    """Trust & safety: a user reporting wrong or suspicious information."""
+
+    __tablename__ = "reports"
+    __table_args__ = (Index("ix_reports_status_created", "status", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
+    reporter_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    target_type: Mapped[str] = mapped_column(String(16))  # shop | place | listing | product
+    target_id: Mapped[str] = mapped_column(String(255))
+    reason: Mapped[str] = mapped_column(String(32))
+    note: Mapped[str | None] = mapped_column(String(500))
+    status: Mapped[str] = mapped_column(String(12), default="open", nullable=False)  # open | resolved | dismissed
+    resolved_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    resolved_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    resolution_note: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+
+
+class SearchLog(Base):
+    """Anonymised search analytics (coordinates rounded to ~1 km)."""
+
+    __tablename__ = "search_logs"
+    __table_args__ = (Index("ix_search_logs_created", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    query: Mapped[str] = mapped_column(String(200))
+    intent: Mapped[str] = mapped_column(String(16), default="product")
+    locality_slug: Mapped[str | None] = mapped_column(String(60))
+    lat_r: Mapped[float | None] = mapped_column(Float)
+    lng_r: Mapped[float | None] = mapped_column(Float)
+    result_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, nullable=False)
+
+
+class ProviderUsage(Base):
+    """Daily call counters for paid providers (Google Places, SMS, vision): budget guard."""
+
+    __tablename__ = "provider_usage"
+    __table_args__ = (UniqueConstraint("day", "provider", "operation", name="uq_provider_usage"),)
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
+    day: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD (IST)
+    provider: Mapped[str] = mapped_column(String(24))
+    operation: Mapped[str] = mapped_column(String(32))
+    count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    errors: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
 class AuditLog(Base):

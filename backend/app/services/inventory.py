@@ -314,6 +314,7 @@ def event_view(event: InventoryEvent, sell_unit: str = "pc") -> dict:
         "note": event.note,
         "actor_user_id": event.actor_user_id,
         "created_at": event.created_at.isoformat(),
+        "client_recorded_at": event.client_recorded_at.isoformat() if event.client_recorded_at else None,
         "unit_label": unit_label(sell_unit),
     }
 

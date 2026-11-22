@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session, selectinload
@@ -14,7 +14,7 @@ from ..db import utcnow
 from ..errors import not_found
 from ..models import Notification, Reservation, User
 from ..ratelimit import rate_limit
-from ..security import ShopContext, current_user, get_db, get_settings, require_shop
+from ..security import ShopContext, current_user, get_db, get_settings, optional_user, require_shop
 from ..services import reservations as rsv
 from ..services.search import search_products
 from ..services.voice import interpret
@@ -27,16 +27,26 @@ router = APIRouter(prefix="/api/v1")
 
 @router.get("/search", tags=["search"], dependencies=[rate_limit("search", 120, 60)])
 def search(
+    request: Request,
     q: str = Query(default="", max_length=200),
     lat: float | None = Query(default=None, ge=-90, le=90),
     lng: float | None = Query(default=None, ge=-180, le=180),
     radius_km: float | None = Query(default=None, gt=0, le=25),
     sort: Literal["relevance", "nearest", "price", "availability"] = "relevance",
     category: str | None = Query(default=None, max_length=40),
+    limit: int = Query(default=20, ge=1, le=50),
+    offset: int = Query(default=0, ge=0, le=500),
+    fresh_only: bool = False,
+    lang: Literal["en", "hi", "kn"] | None = None,
+    user: User | None = Depends(optional_user),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ):
-    return search_products(db, settings, q=q, lat=lat, lng=lng, radius_km=radius_km, sort=sort, category=category)
+    return search_products(
+        db, settings, q=q, lat=lat, lng=lng, radius_km=radius_km, sort=sort, category=category, limit=limit,
+        offset=offset, fresh_only=fresh_only, places=getattr(request.app.state, "places", None),
+        user_id=user.id if user else None, language=lang or (user.preferred_language if user else "en"),
+    )
 
 
 # --------------------------------------------------------------- reservations

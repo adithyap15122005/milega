@@ -135,3 +135,23 @@ def format_size(value: float | None, unit: str | None) -> str | None:
     labels = {"g": "g", "ml": "ml", "w": "W", "mah": "mAh", "cm": "cm", "mm": "mm",
               "inch": "inch", "pages": "pages", "pc": "pcs", "sqmm": "sq mm", "a": "A"}
     return f"{value:g} {labels.get(unit, unit)}"
+
+
+def unit_price(price_paise: int | None, size_value: float | None, size_unit: str | None,
+               sell_unit: str) -> dict | None:
+    """Comparable price per kg / L / piece, or None when it can't be computed honestly."""
+    if price_paise is None:
+        return None
+    if sell_unit == "kg":
+        return {"paise": price_paise, "per": "kg"}
+    if sell_unit == "l":
+        return {"paise": price_paise, "per": "L"}
+    if not size_value or size_value <= 0:
+        return None
+    if size_unit == "g":
+        return {"paise": round(price_paise * 1000 / size_value), "per": "kg"}
+    if size_unit == "ml":
+        return {"paise": round(price_paise * 1000 / size_value), "per": "L"}
+    if size_unit == "pc":
+        return {"paise": round(price_paise / size_value), "per": "piece"}
+    return None

@@ -52,11 +52,26 @@ PENDING_SHOP = ("+919000000017", "New Balaji Stores", "BTM Layout 2nd Stage", 12
                 ["staples", "snacks"], "hi")
 
 
-def seed_catalog(db: Session) -> int:
+def seed_categories(db: Session) -> None:
+    """Insert or update the category list (safe to run on every start)."""
     for slug, en, hi, kn, icon, order in CATEGORIES:
-        if db.get(Category, slug) is None:
+        cat = db.get(Category, slug)
+        if cat is None:
             db.add(Category(slug=slug, name_en=en, name_hi=hi, name_kn=kn, icon=icon, sort_order=order))
+        else:
+            cat.name_en, cat.name_hi, cat.name_kn, cat.icon, cat.sort_order = en, hi, kn, icon, order
     db.flush()
+
+
+def seed_reference_data(db: Session) -> None:
+    from .services.discovery import seed_localities
+
+    seed_categories(db)
+    seed_localities(db)
+
+
+def seed_catalog(db: Session) -> int:
+    seed_reference_data(db)
     if db.scalar(select(func.count()).select_from(ProductVariant)):
         return 0
     created = 0

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, Query
@@ -7,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from ..db import utcnow
 from ..errors import AppError, bad_request, conflict, not_found
 from ..models import (
     Category,
@@ -47,6 +49,8 @@ class AdjustIn(BaseModel):
     quantity: float = Field(default=0, ge=0)
     source: Literal["manual", "voice"] = "manual"
     note: str | None = Field(default=None, max_length=200)
+    # Set by the app's offline outbox: when the shopkeeper actually made the change.
+    client_recorded_at: datetime | None = None
 
 
 def _my_listing(db: Session, ctx: ShopContext, listing_id: int) -> ShopListing:
@@ -268,6 +272,14 @@ def adjust_stock(
         result = set_on_hand(db, listing, qty, event_type="adjustment", **common)
     else:
         result = set_on_hand(db, listing, 0, event_type="out_of_stock", **common)
+    if body.client_recorded_at is not None and not result.replayed:
+        recorded = body.client_recorded_at
+        if recorded.tzinfo is None:
+            recorded = recorded.replace(tzinfo=timezone.utc)
+        now = utcnow()
+        # Ignore clocks that are clearly wrong (future, or older than a week).
+        if now - timedelta(days=7) <= recorded <= now + timedelta(minutes=5):
+            result.event.client_recorded_at = recorded
     view = _view(db, listing)
     return {
         "listing": view,

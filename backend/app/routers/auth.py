@@ -5,7 +5,7 @@ import logging
 from datetime import timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -25,7 +25,10 @@ from ..security import (
     normalize_phone,
 )
 
+from ..services.sms import SmsProvider  # noqa: E402
+
 router = APIRouter(prefix="/api/v1", tags=["auth"])
+MANAGED_CHALLENGE = "managed-by-provider"
 log = logging.getLogger("milega.auth")
 
 Language = Literal["en", "hi", "kn"]
@@ -59,17 +62,9 @@ def user_view(db: Session, user: User) -> dict:
     }
 
 
-def send_otp(settings: Settings, phone: str, code: str) -> None:
-    if settings.sms_provider == "console":
-        # Development only (refused in production by Settings.validate).
-        log.warning("DEV OTP for %s: %s", phone, code)
-        return
-    # Integrate an Indian SMS/WhatsApp OTP provider (MSG91, Gupshup, Twilio Verify) here.
-    raise AppError(503, "sms_unavailable", "SMS service is not configured")
-
-
 @router.post("/auth/otp/request", dependencies=[rate_limit("otp_request", 10, 600)])
-def request_otp(body: OtpRequestIn, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+def request_otp(body: OtpRequestIn, request: Request, db: Session = Depends(get_db),
+                settings: Settings = Depends(get_settings)):
     phone = normalize_phone(body.phone)
     since = utcnow() - timedelta(minutes=10)
     recent = db.scalar(
@@ -77,20 +72,26 @@ def request_otp(body: OtpRequestIn, db: Session = Depends(get_db), settings: Set
     )
     if recent >= 3:
         raise AppError(429, "otp_rate_limited", "Too many codes requested. Try again in 10 minutes.")
-    code = generate_otp()
-    db.add(OtpChallenge(
-        phone=phone, code_hash=hash_otp(settings, phone, code),
-        expires_at=utcnow() + timedelta(seconds=settings.otp_ttl_seconds),
-    ))
-    send_otp(settings, phone, code)
+    sms: SmsProvider = request.app.state.sms
+    expires_at = utcnow() + timedelta(seconds=settings.otp_ttl_seconds)
     response = {"sent": True, "phone": phone, "expires_in": settings.otp_ttl_seconds}
-    if settings.expose_dev_otp:
+    if sms.managed:
+        # The provider (e.g. Twilio Verify) creates and checks the code; we still
+        # track the challenge for expiry, attempt limits and rate limiting.
+        sms.start(phone)
+        db.add(OtpChallenge(phone=phone, code_hash=MANAGED_CHALLENGE, expires_at=expires_at))
+        return response
+    code = generate_otp()
+    db.add(OtpChallenge(phone=phone, code_hash=hash_otp(settings, phone, code), expires_at=expires_at))
+    sms.send(phone, code)
+    if settings.expose_dev_otp and sms.name == "console":
         response["dev_otp"] = code  # clearly-labelled development convenience
     return response
 
 
 @router.post("/auth/otp/verify", dependencies=[rate_limit("otp_verify", 30, 600)])
-def verify_otp(body: OtpVerifyIn, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)):
+def verify_otp(body: OtpVerifyIn, request: Request, db: Session = Depends(get_db),
+               settings: Settings = Depends(get_settings)):
     phone = normalize_phone(body.phone)
     challenge = db.execute(
         select(OtpChallenge)
@@ -103,7 +104,12 @@ def verify_otp(body: OtpVerifyIn, db: Session = Depends(get_db), settings: Setti
     if challenge.attempts >= 5:
         raise AppError(429, "otp_attempts", "Too many wrong attempts. Request a new code.")
     challenge.attempts += 1
-    if not hmac.compare_digest(challenge.code_hash, hash_otp(settings, phone, body.code.strip())):
+    code = body.code.strip()
+    if challenge.code_hash == MANAGED_CHALLENGE:
+        valid = request.app.state.sms.check(phone, code)
+    else:
+        valid = hmac.compare_digest(challenge.code_hash, hash_otp(settings, phone, code))
+    if not valid:
         db.commit()  # persist the failed attempt before erroring
         raise AppError(400, "otp_invalid", "That code is not correct")
     challenge.consumed = True

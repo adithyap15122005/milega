@@ -38,9 +38,12 @@ CATEGORY_WORDS = {
     "kirana": "staples", "grocery": "staples", "groceries": "staples", "provision": "staples",
     "general": None, "stationery": "stationery", "stationary": "stationery",
     "electrical": "electrical", "electricals": "electrical", "electric": "electrical",
-    "hardware": "hardware", "medical": "personal_care", "pharmacy": "personal_care",
+    "hardware": "hardware", "medical": "pharmacy", "pharmacy": "pharmacy", "chemist": "pharmacy",
     "vegetable": "fruits_vegetables", "vegetables": "fruits_vegetables", "fruits": "fruits_vegetables",
-    "dairy": "dairy",
+    "dairy": "dairy", "bakery": "bakery", "supermarket": "supermarket", "electronics": "electronics",
+    "plumbing": "plumbing", "sanitary": "plumbing", "tailor": "tailoring", "jewellery": "jewellery",
+    "jewelry": "jewellery", "footwear": "footwear", "furniture": "furniture", "florist": "florist",
+    "toys": "toys", "bookshop": "books", "bookstore": "books",
 }
 
 _PRICE_PATTERNS = [

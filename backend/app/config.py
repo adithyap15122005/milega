@@ -72,10 +72,37 @@ class Settings:
     search_default_radius_km: float = 5.0
     cors_origins: tuple[str, ...] = field(default_factory=tuple)
     run_background_jobs: bool = True
+    # Google Places API (New), server-side only. Never shipped in the APK.
+    google_places_api_key: str = ""
+    places_daily_request_limit: int = 2000
+    # Sample shops are only shown outside production unless explicitly enabled.
+    show_demo_data: bool = True
+    # Pending (unverified) merchants are hidden from customers by default.
+    show_unverified_merchants: bool = False
+    # Distributed coordination (rate limits, budgets). Empty -> in-process fallback.
+    redis_url: str = ""
+    # SMS OTP: console | msg91 | twilio_verify
+    msg91_auth_key: str = ""
+    msg91_template_id: str = ""
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_verify_service_sid: str = ""
+    # Firebase Cloud Messaging (HTTP v1). Empty -> in-app notifications + polling only.
+    fcm_project_id: str = ""
+    fcm_credentials_file: str = ""
+    sentry_dsn: str = ""
 
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def places_configured(self) -> bool:
+        return bool(self.google_places_api_key)
+
+    @property
+    def push_configured(self) -> bool:
+        return bool(self.fcm_project_id and self.fcm_credentials_file)
 
     def validate(self) -> None:
         if self.is_production:
@@ -88,6 +115,12 @@ class Settings:
                 problems.append("SMS_PROVIDER=console cannot be used in production")
             if self.database_url.startswith("sqlite"):
                 problems.append("Use PostgreSQL (DATABASE_URL) in production")
+            if self.sms_provider == "msg91" and not (self.msg91_auth_key and self.msg91_template_id):
+                problems.append("MSG91_AUTH_KEY and MSG91_TEMPLATE_ID are required for SMS_PROVIDER=msg91")
+            if self.sms_provider == "twilio_verify" and not (
+                self.twilio_account_sid and self.twilio_auth_token and self.twilio_verify_service_sid
+            ):
+                problems.append("TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_VERIFY_SERVICE_SID are required")
             if problems:
                 raise RuntimeError("Unsafe production configuration: " + "; ".join(problems))
 
@@ -125,6 +158,19 @@ def load_settings() -> Settings:
         search_default_radius_km=float(_env("SEARCH_DEFAULT_RADIUS_KM", "5")),
         cors_origins=tuple(o.strip() for o in _env("CORS_ORIGINS", "").split(",") if o.strip()),
         run_background_jobs=_env_bool("RUN_BACKGROUND_JOBS", True),
+        google_places_api_key=_env("GOOGLE_PLACES_SERVER_API_KEY", ""),
+        places_daily_request_limit=_env_int("PLACES_DAILY_REQUEST_LIMIT", 2000),
+        show_demo_data=_env_bool("SHOW_DEMO_DATA", _env("APP_ENV", "development") != "production"),
+        show_unverified_merchants=_env_bool("SHOW_UNVERIFIED_MERCHANTS", False),
+        redis_url=_env("REDIS_URL", ""),
+        msg91_auth_key=_env("MSG91_AUTH_KEY", ""),
+        msg91_template_id=_env("MSG91_TEMPLATE_ID", ""),
+        twilio_account_sid=_env("TWILIO_ACCOUNT_SID", ""),
+        twilio_auth_token=_env("TWILIO_AUTH_TOKEN", ""),
+        twilio_verify_service_sid=_env("TWILIO_VERIFY_SERVICE_SID", ""),
+        fcm_project_id=_env("FCM_PROJECT_ID", ""),
+        fcm_credentials_file=_env("FCM_CREDENTIALS_FILE", ""),
+        sentry_dsn=_env("SENTRY_DSN", ""),
     )
     settings.validate()
     return settings

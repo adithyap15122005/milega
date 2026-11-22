@@ -60,7 +60,7 @@ def create_reservation(
     if listing is None or not listing.is_active:
         raise not_found("Product listing")
     shop = db.get(Shop, listing.shop_id)
-    if shop is None or shop.status != "active":
+    if shop is None or shop.status != "active" or (shop.is_demo and not settings.show_demo_data):
         raise AppError(409, "shop_unavailable", "This shop is not accepting reservations right now")
     if shop.owner_user_id == customer.id:
         raise forbidden("You cannot reserve from your own shop")
