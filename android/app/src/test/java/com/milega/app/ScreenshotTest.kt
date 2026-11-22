@@ -63,7 +63,7 @@ class ScreenshotTest {
                 }
             }
         }
-        shot("04_product_compare")
+        shot("04_product_page")
     }
 
     @Test

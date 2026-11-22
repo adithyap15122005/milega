@@ -71,6 +71,11 @@ android {
                 it.maxHeapSize = "1536m"
                 // Optional: keep Robolectric's Android runtime downloads off a full system drive.
                 System.getenv("ROBOLECTRIC_MAVEN_REPO")?.let { repo -> it.systemProperty("maven.repo.local", repo) }
+                // Optional: use already-downloaded runtime jars (also works around paths containing spaces).
+                System.getenv("ROBOLECTRIC_DEPENDENCY_DIR")?.let { dir ->
+                    it.systemProperty("robolectric.offline", "true")
+                    it.systemProperty("robolectric.dependency.dir", dir)
+                }
             }
         }
     }
